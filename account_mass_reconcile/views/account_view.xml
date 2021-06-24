@@ -6,7 +6,7 @@
         <field name="inherit_id" ref="account.view_account_form" />
         <field name="arch" type="xml">
             <xpath expr="//div/field[@name='reconcile']/.." position="after">
-                <field name="skip_invoice_auto_recon"/>
+                <field name="skip_invoice_auto_recon" />
             </xpath>
         </field>
     </record>

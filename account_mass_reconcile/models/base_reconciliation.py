@@ -80,9 +80,9 @@ class MassReconcileBase(models.AbstractModel):
         if self.partner_ids:
             where += " AND account_move_line.partner_id IN %s"
             params.append(tuple([l.id for l in self.partner_ids]))
-        if self.env.context.get('reconcile_date',False):
+        if self.env.context.get("reconcile_date", False):
             where += " AND account_move_line.date <= %s"
-            params.append(self.env.context.get('reconcile_date'))
+            params.append(self.env.context.get("reconcile_date"))
         return where, params
 
     def _get_filter(self):
@@ -139,30 +139,34 @@ class MassReconcileBase(models.AbstractModel):
         else:
             account = self.account_lost_id
         journal = self.journal_id
-        partners = lines.mapped('partner_id')
+        partners = lines.mapped("partner_id")
         write_off_vals = {
-            'name': _('Automatic writeoff'),
-           # 'amount_currency': 
-           'debit': balance < 0.0 and -balance or 0.0,
-           'credit': balance > 0.0 and balance or 0.0,
-           'partner_id': len(partners)==1 and partners.id or False,
-           'account_id': account.id,
-           'journal_id': journal.id,
-        }
-        counterpart_account = lines.mapped('account_id')
-        counter_part = write_off_vals.copy()
-        counter_part['debit'] = write_off_vals['credit']
-        counter_part['credit'] = write_off_vals['debit']
-        counter_part['account_id'] = counterpart_account.id,
-
-        move = self.env['account.move'].create({
-            "date": lines.env.context.get('date_p'),
+            "name": _("Automatic writeoff"),
+            # 'amount_currency':
+            "debit": balance < 0.0 and -balance or 0.0,
+            "credit": balance > 0.0 and balance or 0.0,
+            "partner_id": len(partners) == 1 and partners.id or False,
+            "account_id": account.id,
             "journal_id": journal.id,
-            "currency_id": account.company_id.currency_id.id,
-            "line_ids": [(0, 0, write_off_vals), (0, 0, counter_part)]
-        })
+        }
+        counterpart_account = lines.mapped("account_id")
+        counter_part = write_off_vals.copy()
+        counter_part["debit"] = write_off_vals["credit"]
+        counter_part["credit"] = write_off_vals["debit"]
+        counter_part["account_id"] = (counterpart_account.id,)
+
+        move = self.env["account.move"].create(
+            {
+                "date": lines.env.context.get("date_p"),
+                "journal_id": journal.id,
+                "currency_id": account.company_id.currency_id.id,
+                "line_ids": [(0, 0, write_off_vals), (0, 0, counter_part)],
+            }
+        )
         move._post()
-        return move.line_ids.filtered(lambda l: l.account_id.id == counterpart_account.id)
+        return move.line_ids.filtered(
+            lambda l: l.account_id.id == counterpart_account.id
+        )
 
     def _reconcile_lines(self, lines, allow_partial=False):
         """Try to reconcile given lines
@@ -194,20 +198,20 @@ class MassReconcileBase(models.AbstractModel):
             line_rs.reconcile()
             return True, True
         # TODO check case with currencies...
-#        elif allow_partial:
-#            # We need to give a writeoff_acc_id
-#            # in case we have a multi currency lines
-#            # to reconcile.
-#            # If amount in currency is equal between
-#            # lines to reconcile
-#            # it will do a full reconcile instead of a partial reconcile
-#            # and make a write-off for exchange
-#            if sum_credit > sum_debit:
-#                writeoff_account = self.income_exchange_account_id
-#            else:
-#                writeoff_account = self.expense_exchange_account_id
-#            line_rs.reconcile(
-#                writeoff_acc_id=writeoff_account, writeoff_journal_id=self.journal_id
-#            )
-#            return True, False
+        #        elif allow_partial:
+        #            # We need to give a writeoff_acc_id
+        #            # in case we have a multi currency lines
+        #            # to reconcile.
+        #            # If amount in currency is equal between
+        #            # lines to reconcile
+        #            # it will do a full reconcile instead of a partial reconcile
+        #            # and make a write-off for exchange
+        #            if sum_credit > sum_debit:
+        #                writeoff_account = self.income_exchange_account_id
+        #            else:
+        #                writeoff_account = self.expense_exchange_account_id
+        #            line_rs.reconcile(
+        #                writeoff_acc_id=writeoff_account, writeoff_journal_id=self.journal_id
+        #            )
+        #            return True, False
         return False, False
