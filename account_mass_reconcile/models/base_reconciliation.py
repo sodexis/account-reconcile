@@ -49,6 +49,7 @@ class MassReconcileBase(models.AbstractModel):
             "date",
             "ref",
             "name",
+            "quantity",
             "partner_id",
             "account_id",
             "reconciled",
@@ -79,6 +80,9 @@ class MassReconcileBase(models.AbstractModel):
         if self.partner_ids:
             where += " AND account_move_line.partner_id IN %s"
             params.append(tuple([l.id for l in self.partner_ids]))
+        if self.env.context.get('reconcile_date',False):
+            where += " AND account_move_line.date <= %s"
+            params.append(self.env.context.get('reconcile_date'))
         return where, params
 
     def _get_filter(self):

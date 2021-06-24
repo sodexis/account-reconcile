@@ -60,6 +60,7 @@ class AccountMassReconcileMethod(models.Model):
             ("mass.reconcile.simple.name", "Simple. Amount and Name"),
             ("mass.reconcile.simple.partner", "Simple. Amount and Partner"),
             ("mass.reconcile.simple.reference", "Simple. Amount and Reference"),
+            ("mass.reconcile.simple.product.partner", "Simple. Amount, Partner and Product"),
             ("mass.reconcile.advanced.ref", "Advanced. Partner and Ref."),
         ]
 
@@ -83,6 +84,7 @@ class AccountMassReconcileMethod(models.Model):
         store=True,
         readonly=True,
     )
+    matching_type = fields.Selection([('two_way','2-Way'),('three_way','3-Way')])
 
 
 class AccountMassReconcile(models.Model):
@@ -94,9 +96,11 @@ class AccountMassReconcile(models.Model):
     def _compute_total_unrec(self):
         obj_move_line = self.env["account.move.line"]
         for rec in self:
-            rec.unreconciled_count = obj_move_line.search_count(
-                [("account_id", "=", rec.account.id), ("reconciled", "=", False)]
-            )
+            search_domain = [('account_id', '=', rec.account.id),
+                 ('reconciled', '=', False)]
+            if rec.date:
+                search_domain.append(('date','<=',rec.date))
+            rec.unreconciled_count = obj_move_line.search_count(search_domain)
 
     @api.depends("history_ids")
     def _compute_last_history(self):
@@ -128,6 +132,9 @@ class AccountMassReconcile(models.Model):
         compute="_compute_last_history",
     )
     company_id = fields.Many2one("res.company", string="Company")
+    date = fields.Date(help='Only consider journal items with a date before that date')
+    three_way_limit = fields.Integer(string="3-Way Match limit")
+    non_rec_entry = fields.Integer(string="Non Reconcile Entries")
 
     @staticmethod
     def _prepare_run_transient(rec_method):
@@ -161,7 +168,8 @@ class AccountMassReconcile(models.Model):
         # often. We have to create it here and not later to avoid problems
         # where the new cursor sees the lines as reconciles but the old one
         # does not.
-
+        if self.date:
+            self = self.with_context(reconcile_date = self.date)
         for rec in self:
             ctx = self.env.context.copy()
             ctx["commit_every"] = rec.account.company_id.reconciliation_commit_every
@@ -177,7 +185,7 @@ class AccountMassReconcile(models.Model):
                     rec_model = self.env[method.name]
                     auto_rec_id = rec_model.create(self._prepare_run_transient(method))
 
-                    ml_rec_ids = auto_rec_id.automatic_reconcile()
+                    ml_rec_ids = auto_rec_id.with_context(matching_type = method.matching_type, three_way_limit = self.three_way_limit,non_rec_entry=self.non_rec_entry, rec_id=rec).automatic_reconcile()
 
                     all_ml_rec_ids += ml_rec_ids
 
@@ -239,9 +247,11 @@ class AccountMassReconcile(models.Model):
         """ Open the view of move line with the unreconciled move lines"""
         self.ensure_one()
         obj_move_line = self.env["account.move.line"]
-        lines = obj_move_line.search(
-            [("account_id", "=", self.account.id), ("reconciled", "=", False)]
-        )
+        search_domain = [('account_id', '=', self.account.id),
+                 ('reconciled', '=', False)]
+        if self.date:
+            search_domain.append(('date','<=',self.date))
+        lines = obj_move_line.search(search_domain)
         name = _("Unreconciled items")
         return self._open_move_line_list(lines.ids or [], name)
 
